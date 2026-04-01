@@ -1,141 +1,131 @@
-# NBA Data and Analytics Engineering
+# NBA Analytics Engineering Platform
 
-This repository is an NBA-focused data engineering workspace for collecting multi-season player game logs, enriching them with player metadata, and organizing the project into the layers you would expect in a modern analytics platform.
+An end-to-end analytics engineering project built around NBA player game data and a modern ELT stack:
 
-The project has been refocused away from the earlier Streamlit and model-demo setup. Today, the core of the repository is the data pipeline foundation: ingestion scripts, storage-oriented folder structure, warehouse and transformation scaffolding, and room to grow into orchestration, quality checks, monitoring, and BI.
+- Python for ingestion
+- Google Cloud Storage for the data lake
+- BigQuery for the warehouse
+- dbt for transformations
+- Prefect for orchestration
+- Power BI for analytics and reporting
 
-## What This Project Does
+The repository is structured like a production-style data platform, with clear separation between ingestion, storage, warehouse modeling, orchestration, testing, and BI.
 
-- Pulls regular-season NBA player game logs from the NBA Stats API
-- Stores season-level CSV exports in `data/`
-- Enriches player logs with biographical attributes such as height, weight, team, and listed position
-- Organizes the repo into analytics engineering domains such as ingestion, transformations, warehouse, orchestration, monitoring, and quality
-- Provides a foundation for future dbt, BigQuery, Prefect, Power BI, and observability work
+## Overview
 
-## Current State
+This project is designed to support multi-season NBA data pipelines from raw ingestion through analytics-ready models.
 
-This repo is best understood as a platform foundation rather than a finished analytics product.
+Key design principles:
 
-- The primary working flow today is Python-based data extraction and enrichment
-- The top-level `app.py` is a placeholder and is not the main interface
-- Many subfolders already exist to support a more complete analytics stack, but several are still scaffolds with placeholder READMEs
-- Sample season exports are already checked into `data/` for recent NBA seasons
+- Raw data lands in `data/raw/` locally and can be promoted to GCS
+- Warehouse fact tables are season-aware and include `season_id`
+- BigQuery models are intended to be partitioned by `game_date` or `season_id`, depending on table grain
+- dbt handles staging, intermediate, and mart transformations
+- Prefect coordinates ingestion and transformation workflows
+- Power BI sits on top of curated marts for business-facing analysis
 
-## Repository Layout
+## Data Model Direction
+
+The platform is built for multi-season analysis rather than a single-season demo.
+
+- `dim_seasons` is the conformed season dimension
+- Fact tables such as player game stats and games include `season_id` as a foreign key
+- Event-grain tables should generally be partitioned by `game_date`
+- Season-grain tables can be partitioned by `season_id`
+
+This makes the project easier to backfill, test, and scale as more seasons are added.
+
+## Current Repository Layout
 
 ```text
 .
-├── app.py                    # Placeholder entrypoint; points users toward data ingestion
-├── data/                     # Season CSV exports and derived flat files
-├── scripts/                  # Data collection and merge utilities
-├── ingestion/                # Ingestion-layer docs and future pipeline code
-├── data_lake/                # Raw/landing-zone design docs and assets
-├── transformations/          # dbt and transformation layer structure
-├── warehouse/                # Warehouse-oriented structure and docs
-├── analytics/                # BI/reporting assets, including Power BI
-├── orchestration/            # Prefect-oriented orchestration scaffolding
-├── quality/                  # Data quality patterns and tests
-├── monitoring/               # Monitoring and observability structure
-├── config/                   # Environment-specific config areas
-├── credentials/              # Credential guidance and placeholders
-├── docs/                     # Project documentation and standards
-├── shared/                   # Shared assets and reusable helpers
-├── tests/                    # Platform and pipeline test area
-└── requirements.txt          # Python dependencies
+├── analytics/          # Power BI assets, dashboards, and data dictionary
+├── config/             # Environment and platform configuration placeholders
+├── data/
+│   └── raw/            # Local raw CSV extracts
+├── data_lake/          # GCS zone conventions and storage scaffolding
+├── dbt/                # dbt project used for warehouse transformations
+├── docs/               # Architecture and data model documentation
+├── ingestion/          # Python ingestion and load layer
+├── logs/               # Logging config and runtime log folders
+├── orchestration/      # Prefect flows, tasks, and deployment scaffolding
+├── tests/              # Pipeline, dbt, and data quality tests
+├── warehouse/          # BigQuery-oriented warehouse structure
+├── .env                # Local environment variables (not for commit)
+├── Makefile            # Project task runner placeholder
+└── requirements.txt    # Python dependencies
 ```
 
-## Key Scripts
+## Core Layers
 
-### `scripts/fetch_ten_seasons.py`
+### Ingestion
 
-The main ingestion script. It:
+The ingestion layer is responsible for collecting source data and moving it into cloud storage and the warehouse.
 
-- Determines the latest completed NBA season
-- Builds a rolling window of completed seasons
-- Calls `leaguegamefinder` from `stats.nba.com`
-- Splits requests into smaller date windows to reduce failure risk
-- Retries failed requests with backoff
-- Writes one CSV per season to `data/`
-- Optionally supports a combined export
+Primary files:
 
-Example:
+- `ingestion/ingest_player_logs.py`
+- `ingestion/upload_to_gcs.py`
+- `ingestion/load_to_bigquery.py`
+- `ingestion/config.py`
 
-```bash
-python scripts/fetch_ten_seasons.py
-```
+Shared utilities:
 
-Fetch fewer seasons:
+- `ingestion/utils/gcs_client.py`
+- `ingestion/utils/bq_client.py`
+- `ingestion/utils/validation.py`
 
-```bash
-python scripts/fetch_ten_seasons.py --seasons 3
-```
+### dbt
 
-Write to a different directory:
+The dbt project lives in the root-level `dbt/` directory and follows standard model layering:
 
-```bash
-python scripts/fetch_ten_seasons.py --output-dir tmp/nba_exports
-```
+- `models/staging/`
+- `models/intermediate/`
+- `models/marts/facts/`
+- `models/marts/dimensions/`
 
-### `scripts/fetch_player_bio.py`
+Example models already scaffolded:
 
-Fetches active player metadata using `nba_api` and writes a lookup file to `data/nba_player_bio.csv`.
+- `stg_player_game_logs`
+- `int_player_game_enriched`
+- `fact_player_game_stats`
+- `fact_team_game_stats`
+- `dim_players`
+- `dim_teams`
+- `dim_seasons`
 
-Example:
+The dbt project is configured under:
 
-```bash
-python scripts/fetch_player_bio.py
-```
+- `dbt/dbt_project.yml`
+- `dbt/profiles.yml.example`
 
-### `scripts/merge_bio_into_logs.py`
+Note: the real `profiles.yml` should live in `~/.dbt/` and not be committed.
 
-Joins a season log file with player bio data and standardizes fields such as `HEIGHT_IN` and `WEIGHT_LB`.
+### Orchestration
 
-Current defaults target the `2023-24` season files:
+Prefect is the orchestration layer for running ingestion and transformation workflows.
 
-```bash
-python scripts/merge_bio_into_logs.py
-```
+Key scaffolded files:
 
-### `scripts/merge_positions.py`
+- `orchestration/flows/main_flow.py`
+- `orchestration/tasks/ingestion_task.py`
+- `orchestration/tasks/dbt_task.py`
 
-Merges external position labels into player logs using player names. This is useful if you are supplementing NBA API data with a separate curated position file.
+### Analytics
 
-## Getting Started
+The analytics layer is designed for Power BI deliverables and business-facing documentation.
 
-### 1. Create a virtual environment
+Included areas:
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
+- `analytics/powerbi/`
+- `analytics/dashboards/`
+- `analytics/data_dictionary/`
 
-### 2. Install dependencies
+## Local Data
 
-```bash
-pip install -r requirements.txt
-```
+Historical CSV extracts are stored under `data/raw/`.
 
-### 3. Pull raw season data
-
-```bash
-python scripts/fetch_ten_seasons.py
-```
-
-### 4. Fetch player metadata
-
-```bash
-python scripts/fetch_player_bio.py
-```
-
-### 5. Enrich a season export
-
-```bash
-python scripts/merge_bio_into_logs.py
-```
-
-## Data Assets
-
-The `data/` directory already includes season exports such as:
+Current local extracts include:
 
 - `player_logs_2015-16.csv`
 - `player_logs_2016-17.csv`
@@ -148,35 +138,115 @@ The `data/` directory already includes season exports such as:
 - `player_logs_2023-24.csv`
 - `player_logs_2024-25.csv`
 
-These files give the project a ready-to-use historical base for downstream modeling, warehousing, and analytics work.
+These files provide a starting point for multi-season ingestion, warehouse loading, and transformation testing.
 
-## Engineering Direction
+## Environment Configuration
 
-The folder structure suggests a target architecture like this:
+Project configuration is driven by environment variables through the local `.env` file.
 
-1. Ingest raw NBA data into a landing zone
-2. Standardize and validate raw extracts
-3. Load curated datasets into an analytical warehouse
-4. Transform datasets into analytics-ready models with dbt
-5. Orchestrate recurring runs with Prefect
-6. Serve reporting outputs through BI tools such as Power BI
-7. Add monitoring, logging, and data quality checks around the pipeline
+The current environment setup is designed to stay minimal and focused on:
 
-## Where To Add Work Next
+- environment selection
+- local data paths
+- NBA ingestion settings
+- GCP project and location
+- a single GCS bucket
+- a single BigQuery dataset
+- dbt configuration
+- Prefect settings
+- logging settings
 
-- Add configurable input and output paths to the merge scripts
-- Move hard-coded filenames into environment-aware config
-- Build warehouse load scripts for BigQuery
-- Add dbt models for staging, intermediate, and marts layers
-- Add data validation tests for schema, nulls, uniqueness, and freshness
-- Add Prefect flows for scheduled ingestion and transformation runs
-- Expand project documentation in `docs/architecture/` and `docs/runbooks/`
+## Getting Started
 
-## Notes
+### 1. Create and activate a virtual environment
 
-- NBA Stats endpoints can rate-limit or temporarily block requests, so the ingestion script uses sleeps and retries
-- The current enrichment script is tailored to one season by default and should be generalized if you want a repeatable multi-season job
-- Several directories are intentionally scaffolded now so the platform can evolve without reorganizing the repo later
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 2. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Configure dbt locally
+
+Create your real dbt profile in:
+
+```bash
+~/.dbt/profiles.yml
+```
+
+Make sure it includes a profile named `nba_analytics`, since that is what the project expects in `dbt/dbt_project.yml`.
+
+### 4. Review local environment variables
+
+Update your local `.env` with the values needed for:
+
+- `GCP_PROJECT_ID`
+- `GCS_BUCKET`
+- `BQ_DATASET`
+- `DBT_TARGET`
+- `PREFECT_API_URL`
+
+### 5. Run ingestion or transformation steps
+
+Depending on what you are building next, typical workflows will be:
+
+```bash
+python ingestion/ingest_player_logs.py
+python ingestion/upload_to_gcs.py
+python ingestion/load_to_bigquery.py
+```
+
+and later:
+
+```bash
+cd dbt
+dbt debug
+dbt run
+dbt test
+```
+
+## Testing
+
+The project separates testing concerns so pipeline and transformation validation can evolve independently.
+
+Current test structure includes:
+
+- `tests/unit/`
+- `tests/integration/`
+- `tests/pipeline/`
+- `tests/data_quality/`
+- `tests/dbt/`
+
+This layout supports both code-level testing and warehouse/data validation as the platform matures.
+
+## Why This Repo Structure Works
+
+This repository is organized to resemble how a real analytics engineering team would manage an internal data platform:
+
+- ingestion code is separate from warehouse logic
+- dbt transformations are isolated in their own project
+- orchestration is independent from transformation logic
+- BI assets are separated from data pipelines
+- configuration, documentation, tests, and logs each have a dedicated home
+
+That separation makes the project easier to maintain, extend, and deploy.
+
+## Roadmap
+
+Near-term improvements that fit naturally into the current structure:
+
+- implement ingestion scripts against the simplified `.env` config
+- land raw extracts in GCS using a raw, staging, and processed prefix strategy
+- load season-aware tables into BigQuery
+- build out dbt staging, intermediate, and mart SQL
+- add schema, relationship, uniqueness, and freshness tests
+- wire the pipeline together with Prefect deployments
+- publish curated marts to Power BI
 
 ## License
 

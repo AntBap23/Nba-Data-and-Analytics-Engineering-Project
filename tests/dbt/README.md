@@ -1,0 +1,1 @@
+# Placeholder dbt test artifacts.

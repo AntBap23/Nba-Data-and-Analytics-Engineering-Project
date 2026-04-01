@@ -1,0 +1,8 @@
+version: 2
+
+models:
+  - name: fact_player_game_stats
+    description: Player-grain fact table with one row per player per game.
+
+  - name: fact_team_game_stats
+    description: Team-grain fact table with one row per team per game.

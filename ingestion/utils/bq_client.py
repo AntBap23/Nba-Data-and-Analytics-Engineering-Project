@@ -1,0 +1,1 @@
+# Placeholder BigQuery client utilities.
