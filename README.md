@@ -17,7 +17,7 @@ This project is designed to support multi-season NBA data pipelines from raw ing
 
 Key design principles:
 
-- Raw data lands in `data/raw/` locally and can be promoted to GCS
+- Initial backfills land in `data/temp/` first, then move to GCS and BigQuery raw
 - Warehouse fact tables are season-aware and include `season_id`
 - BigQuery models are intended to be partitioned by `game_date` or `season_id`, depending on table grain
 - dbt handles staging, intermediate, and mart transformations
@@ -42,7 +42,8 @@ This makes the project easier to backfill, test, and scale as more seasons are a
 ├── analytics/          # Power BI assets, dashboards, and data dictionary
 ├── config/             # Environment and platform configuration placeholders
 ├── data/
-│   └── raw/            # Local raw CSV extracts
+│   ├── raw/            # Durable local CSV exports kept for reference
+│   └── temp/           # Transient landing area for pipeline backfills
 ├── data_lake/          # GCS zone conventions and storage scaffolding
 ├── dbt/                # dbt project used for warehouse transformations
 ├── docs/               # Architecture and data model documentation
@@ -64,10 +65,10 @@ The ingestion layer is responsible for collecting source data and moving it into
 
 Primary files:
 
-- `ingestion/ingest_player_logs.py`
+- `scripts/fetch_ten_seasons.py`
 - `ingestion/upload_to_gcs.py`
 - `ingestion/load_to_bigquery.py`
-- `ingestion/config.py`
+- `orchestration/flows/backfill_seasons_flow.py`
 
 Shared utilities:
 
@@ -120,6 +121,29 @@ Included areas:
 - `analytics/powerbi/`
 - `analytics/dashboards/`
 - `analytics/data_dictionary/`
+
+## Pipeline Workflow
+
+The initial historical pipeline is intentionally simple and production-shaped:
+
+1. Fetch the latest 10 completed seasons into `data/temp/`
+2. Upload each temp CSV to `gs://<bucket>/raw/nba/player_logs/`
+3. Delete each local temp file only after a successful upload
+4. Load each GCS file into its matching BigQuery raw table
+5. Run dbt staging, intermediate, and mart models
+
+The current raw BigQuery contract is season-specific so it aligns with the existing dbt staging model:
+
+- `player_game_logs_2015_raw`
+- `player_game_logs_2016_raw`
+- ...
+- `player_game_logs_2024_raw`
+
+The initial pipeline entrypoint is:
+
+```bash
+python orchestration/flows/backfill_seasons_flow.py
+```
 
 ## Local Data
 
@@ -196,9 +220,15 @@ Update your local `.env` with the values needed for:
 Depending on what you are building next, typical workflows will be:
 
 ```bash
-python ingestion/ingest_player_logs.py
+python scripts/fetch_ten_seasons.py --output-dir data/temp
 python ingestion/upload_to_gcs.py
 python ingestion/load_to_bigquery.py
+```
+
+Or run the full initial backfill in one command:
+
+```bash
+python orchestration/flows/backfill_seasons_flow.py
 ```
 
 and later:

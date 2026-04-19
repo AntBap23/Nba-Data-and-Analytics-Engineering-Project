@@ -1,1 +1,0 @@
-# Placeholder GCS client utilities.

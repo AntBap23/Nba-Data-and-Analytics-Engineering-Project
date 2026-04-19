@@ -8,7 +8,7 @@ import requests
 
 
 NBA_STATS_URL = "https://stats.nba.com/stats/leaguegamefinder"
-OUTPUT_DIR = Path("data")
+OUTPUT_DIR = Path("data/temp")
 REQUEST_TIMEOUT = 30
 SLEEP_BETWEEN_CALLS = 1.25
 DEFAULT_SEASON_COUNT = 10
